@@ -1,55 +1,91 @@
 import { Component } from 'react';
-import FeedbackOptions from './FeedbackOptions';
-import Statistics from './Statistics/Statistics';
+import { ToastContainer } from 'react-toastify';
+import 'react-toastify/dist/ReactToastify.css';
 import { GlobalStyle } from './GlobalStyle';
-import { Box } from "./Box";
+import { Box } from './Box';
+import { fetchPhotos } from '../services/api';
+import Searchbar from './Searchbar';
+import ImageGallery from './ImageGallery';
+import Loader from './Loader';
+import Button from './Button';
 
-
-class App extends Component{
+export default class App extends Component {
   state = {
-    good: 0,
-    neutral: 0,
-    bad: 0,
+    page: 1,
+    query: '',
+    hits: [],
+    status: 'idle',
   };
 
-  leaveFeedback = feedback => {
+  async componentDidUpdate(_, prevState) {
+    try {
+      const prevPage = prevState.page;
+      const currentPage = this.state.page;
+      const prevQuery = prevState.query;
+      const currentQuery = this.state.query;
+
+      if (prevPage !== currentPage || prevQuery !== currentQuery) {
+        this.setState({ status: 'pending' });
+        const data = await fetchPhotos(currentQuery, currentPage);
+        const { hits, total } = data;
+
+        if (total === 0 || (hits.length === 0 && hits.totalHits > 0)) {
+          this.setState({ status: 'idle' });
+          return;
+        }
+        this.setState({ status: 'resolved' });
+        this.setState(prevState => ({
+          hits: [...prevState.hits, ...hits],
+        }));
+        return;
+      }
+    } catch (error) {
+      this.setState({ status: 'rejected' });
+    }
+  }
+
+  handleFormSubmit = query => {
+    this.setState({
+      query: query,
+      page: 1,
+      hits: [],
+      status: 'idle',
+    });
+  };
+  loadMore = () => {
     this.setState(prevState => ({
-      [feedback]: prevState[feedback] + 1,
+      page: prevState.page + 1,
     }));
   };
-
-  countTotalFeedback = () => {
-    return Object.values(this.state).reduce((total, item) => total + item);
-  };
-
-  countPositiveFeedbackPercentage = () => {
-    const { good } = this.state;
-    const total = this.countTotalFeedback();
-    
-    if (good !== 0) {
-    return Math.round((good / total) * 100);
-  } else {
-    return 0;
-  }
-};
-
   render() {
-    const { good, neutral, bad } = this.state;
-    const options = Object.keys(this.state);
-
-    return (       
-      <Box as="main" backgroundColor="DarkSalmon" m="16px" p="16px">
-    <GlobalStyle />
-    <FeedbackOptions options={options}
-          onLeaveFeedback={this.leaveFeedback } />
-    <Statistics
-          good={good}
-          neutral={neutral}
-          bad={bad}
-          total={this.countTotalFeedback}
-          positivePercentage={this.countPositiveFeedbackPercentage} />
-       </Box>
+    const { hits, status } = this.state;
+    return (
+      <Box
+        as="main"
+        display="grid"
+        grid-template-columns="1fr"
+        gridGap="16px"
+        pb="24p"
+      >
+        <GlobalStyle />
+        <ToastContainer
+          position="top-right"
+          autoClose={3000}
+          hideProgressBar={false}
+          newestOnTop={false}
+          closeOnClick
+          rtl={false}
+          pauseOnFocusLoss
+          draggable
+          pauseOnHover
+        />
+        <Searchbar onSubmit={this.handleFormSubmit} />
+        {hits.length > 0 && <ImageGallery hits={hits} />}
+        {status === 'pending' && <Loader />}
+        {hits.length >= 12 && hits.length % 12 === 0 && (
+          <Button onClick={this.loadMore} />
+        )}
+      </Box>
     );
-  };
- }
-export default App;
+  }
+}
